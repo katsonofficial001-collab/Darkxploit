@@ -1,38 +1,30 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
+const QRCode = require("qrcode");
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('./auth');
+    const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
     const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true
+        auth: state
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
+    sock.ev.on("connection.update", async (update) => {
+        const { connection, qr } = update;
 
         if (qr) {
-            console.log("📲 Scan this QR in WhatsApp Linked Devices");
-            console.log(qr);
+            const qrImage = await QRCode.toDataURL(qr);
+            console.log("SCAN THIS QR:");
+            console.log(qrImage);
         }
 
-        if (connection === 'close') {
-            const shouldReconnect =
-                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-
-            if (shouldReconnect) {
-                startBot();
-            }
-        }
-
-        if (connection === 'open') {
-            console.log("✅ Bot connected successfully");
+        if (connection === "open") {
+            console.log("✅ Connected to WhatsApp");
         }
     });
 
-    sock.ev.on('messages.upsert', async ({ messages }) => {
+    sock.ev.on("messages.upsert", async ({ messages }) => {
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
@@ -44,14 +36,11 @@ async function startBot() {
 
         if (!text) return;
 
-        // 🔗 LINK DETECTION
         if (text.includes("http://") || text.includes("https://")) {
             await sock.sendMessage(msg.key.remoteJid, {
                 text: `⚠️ Link detected from @${sender.split("@")[0]}`,
                 mentions: [sender]
             });
-
-            console.log("🚨 Link detected:", text);
         }
     });
 }
