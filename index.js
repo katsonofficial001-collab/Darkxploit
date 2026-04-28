@@ -10,6 +10,8 @@ async function startBot() {
 
     sock.ev.on("creds.update", saveCreds);
 
+    let pairingCodePrinted = false;
+
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
 
@@ -17,20 +19,39 @@ async function startBot() {
             console.log("🔄 Connecting...");
         }
 
-        if (connection === "open") {
-            console.log("✅ Connected to WhatsApp");
-        }
+        // 🔑 Pairing code (ONLY ONCE)
+        if (!sock.authState.creds.registered && !pairingCodePrinted) {
+            pairingCodePrinted = true;
 
-        // 🔑 Request pairing ONLY after slight delay
-        if (!sock.authState.creds.registered) {
             setTimeout(async () => {
                 try {
                     const code = await sock.requestPairingCode("2348142876956");
-                    console.log("📲 Pairing Code:", code);
+
+                    console.log("\n📲 ===============================");
+                    console.log("📲   YOUR WHATSAPP PAIRING CODE");
+                    console.log("📲         " + code);
+                    console.log("📲 ===============================\n");
+
+                    // 🔁 repeat for 1 minute
+                    let count = 0;
+                    const interval = setInterval(() => {
+                        console.log("📲 REPEAT CODE:", code);
+                        count++;
+
+                        if (count >= 20) { // ~1 minute (3s * 20)
+                            clearInterval(interval);
+                            console.log("⏱️ Code display stopped");
+                        }
+                    }, 3000);
+
                 } catch (err) {
                     console.log("❌ Pairing error:", err.message);
                 }
-            }, 5000); // wait 5 seconds
+            }, 5000);
+        }
+
+        if (connection === "open") {
+            console.log("✅ Connected to WhatsApp");
         }
 
         if (connection === "close") {
@@ -38,11 +59,15 @@ async function startBot() {
                 lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
             console.log("❌ Connection closed");
-            if (shouldReconnect) startBot();
+
+            if (shouldReconnect) {
+                console.log("🔄 Reconnecting...");
+                startBot();
+            }
         }
     });
 
-    // 🔗 Link detector
+    // 🔗 Link detection
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
