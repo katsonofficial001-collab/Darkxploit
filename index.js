@@ -1,29 +1,39 @@
-const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
-const QRCode = require("qrcode");
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
     const sock = makeWASocket({
-        auth: state
+        auth: state,
+        browser: ["Railway Bot", "Chrome", "1.0.0"]
     });
 
     sock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on("connection.update", async (update) => {
-        const { connection, qr } = update;
+    // 🔑 Pairing code login
+    if (!sock.authState.creds.registered) {
+        const code = await sock.requestPairingCode("2348142876956");
+        console.log("📲 Pairing Code:", code);
+    }
 
-        if (qr) {
-            const qrImage = await QRCode.toDataURL(qr);
-            console.log("SCAN THIS QR:");
-            console.log(qrImage);
-        }
+    // 🔌 Connection status
+    sock.ev.on("connection.update", (update) => {
+        const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
             console.log("✅ Connected to WhatsApp");
         }
+
+        if (connection === "close") {
+            const shouldReconnect =
+                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+
+            console.log("❌ Connection closed");
+            if (shouldReconnect) startBot();
+        }
     });
 
+    // 🔗 Link detection in groups
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
