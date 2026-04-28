@@ -10,18 +10,27 @@ async function startBot() {
 
     sock.ev.on("creds.update", saveCreds);
 
-    // 🔑 Pairing code login
-    if (!sock.authState.creds.registered) {
-        const code = await sock.requestPairingCode("2348142876956");
-        console.log("📲 Pairing Code:", code);
-    }
-
-    // 🔌 Connection status
-    sock.ev.on("connection.update", (update) => {
+    sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
+
+        if (connection === "connecting") {
+            console.log("🔄 Connecting...");
+        }
 
         if (connection === "open") {
             console.log("✅ Connected to WhatsApp");
+        }
+
+        // 🔑 Request pairing ONLY after slight delay
+        if (!sock.authState.creds.registered) {
+            setTimeout(async () => {
+                try {
+                    const code = await sock.requestPairingCode("2348142876956");
+                    console.log("📲 Pairing Code:", code);
+                } catch (err) {
+                    console.log("❌ Pairing error:", err.message);
+                }
+            }, 5000); // wait 5 seconds
         }
 
         if (connection === "close") {
@@ -33,7 +42,7 @@ async function startBot() {
         }
     });
 
-    // 🔗 Link detection in groups
+    // 🔗 Link detector
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
